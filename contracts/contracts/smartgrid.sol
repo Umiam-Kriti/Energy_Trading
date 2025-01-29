@@ -3,236 +3,212 @@ pragma solidity ^0.8.0;
 
 contract P2PEnergyTrading {
     struct Participant {
-        bool isProducer;
-        uint256 energyBalance;
-        uint256 balance;
-        bool isRegistered;
+        uint128[24] sellingPrices;
+        uint128[24] buyingPrices;
+        uint128[24] generation;
+        uint128[24] consumption;
+        uint8 group;
+        bool isProsumer;
+        bool exists;
     }
 
-    struct Trade {
-        address buyer;
-        address seller;
-        uint256 energyAmount;
-        uint256 price;
+    struct MatchParams {
+        uint8 hour;
+        uint8 group;
+        uint128 excess;
+        uint128 sellingPrice;
     }
-
-    enum OrderType { Buy, Sell }
-    
-    struct Order {
-        uint id;
-        address trader;
-        uint price;
-        uint quantity;
-        OrderType orderType;
-        bool isActive;
-    }
-
-    uint public nextOrderId = 1;
-    mapping(uint => Order) public orders;
-    uint[] public buyOrders;
-    uint[] public sellOrders;
-
-    event OrderPlaced(uint indexed id, address indexed trader, uint price, uint quantity, OrderType orderType);
-    event OrderMatched(uint buyOrderId, uint sellOrderId, address indexed buyer, address indexed seller, uint matchedPrice, uint matchedQuantity);
-    event OrderCancelled(uint indexed id);
 
     mapping(address => Participant) public participants;
-    Trade[] public trades;
+    address[] public participantAddresses;
+    
+    uint8 public currentHour;
+    uint128[24] public unmatchedConsumptionPrice;
+    uint128[24] public unmatchedGenerationReward;
+    address public owner;
 
-    event EnergyProduced(address indexed producer, uint256 amount);
-    event EnergyConsumed(address indexed consumer, uint256 amount);
+    event NeedSorting(uint256 hour, uint8 group);
+    event ParticipantRegistered(address indexed participant, uint8 group, bool isProsumer);
+    event TradeExecuted(address indexed seller, address indexed buyer, uint8 hour, uint128 amount, uint128 price);
+    event UnmatchedConsumption(address indexed consumer, uint8 hour, uint128 amount, uint128 price);
+    event UnmatchedGeneration(address indexed prosumer, uint8 hour, uint256 amount, uint256 price);
 
-    // Register a participant as a producer or consumer
-    function registerParticipant(bool _isProducer) external {
-        require(!participants[msg.sender].isRegistered, "Participant already registered");
-        participants[msg.sender] = Participant({
-            isProducer: _isProducer,
-            energyBalance: 0,
-            balance: 0,
-            isRegistered: true
-        });
+    event HourUpdated(uint8 newHour);
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Not authorized");
+        _;
+    }
+    
+    modifier onlyEditHours() {
+        require(currentHour >= 22 || currentHour <= 5, "Can edit prices only from 10 PM to 6 AM");
+        _;
     }
 
-    // Producers generate energy
-    function produceEnergy(uint256 _amount) external {
-        require(participants[msg.sender].isProducer, "Only producers can generate energy");
-        participants[msg.sender].energyBalance += _amount;
-        emit EnergyProduced(msg.sender, _amount);
+    constructor() {
+        owner = msg.sender;
+        initializeDefaultPrices();
     }
 
-    // Create an order
-
-    function placeOrder(address _trader, uint price, uint quantity, OrderType orderType) external {
-        require(price > 0, "Price must be greater than 0");
-        require(quantity > 0, "Quantity must be greater than 0");
-
-        uint orderId = nextOrderId++;
-        orders[orderId] = Order({
-            id: orderId,
-            trader: msg.sender,
-            price: price,
-            quantity: quantity,
-            orderType: orderType,
-            isActive: true
-        });
-
-        if (orderType == OrderType.Buy) {
-            require(participants[_trader].balance >= price, "Insufficient balance for trade");
-            uint256 a=matchBuyOrders(orderId);
-            if (a==0){
-                buyOrders.push(orderId);
-            }
-        } else {
-            require(participants[_trader].isProducer, "Seller must be a producer");
-            require(participants[_trader].energyBalance >= quantity, "Seller does not have enough energy");
-            uint256 b=matchSellOrders(orderId);
-            if (b==0){
-                sellOrders.push(orderId);
-            }
+    function initializeDefaultPrices() private {
+        for (uint8 i = 0; i < 18; i++) {
+            unmatchedGenerationReward[i] = 11100000000000;
         }
+        unmatchedGenerationReward[18] = 11700000000000;
+        unmatchedGenerationReward[19] = 12200000000000;
+        unmatchedGenerationReward[20] = 12600000000000;
+        unmatchedGenerationReward[21] = 12600000000000;
+        unmatchedGenerationReward[22] = 12200000000000;
+        unmatchedGenerationReward[23] = 11700000000000;
 
-        emit OrderPlaced(orderId, msg.sender, price, quantity, orderType);
+        unmatchedConsumptionPrice = [26300000000000,25900000000000,25900000000000,25900000000000,25900000000000,25900000000000,
+        26300000000000,25500000000000,24800000000000,24100000000000,23300000000000,22600000000000,22600000000000,
+        23300000000000,24100000000000,24800000000000,25500000000000,26300000000000,27600000000000,28900000000000,
+        30000000000000,30000000000000,28900000000000,27600000000000];
+    }
+
+    function registerParticipant(uint8 group, bool isProsumer) external {
+        require(!participants[msg.sender].exists, "Already registered");
+        require(group >= 1 && group <= 6, "Invalid group");
         
+        Participant storage newParticipant = participants[msg.sender];
+        newParticipant.group = group;
+        newParticipant.isProsumer = isProsumer;
+        newParticipant.exists = true;
+        
+        participantAddresses.push(msg.sender);
+        emit ParticipantRegistered(msg.sender, group, isProsumer);
     }
 
-
-    function matchBuyOrders(uint ID) internal returns(uint256 n){
-            Order storage buyOrder = orders[ID];
-
-            for (uint j = 0; j < sellOrders.length; j++) {
-                Order storage sellOrder = orders[sellOrders[j]];
-                if (!sellOrder.isActive) continue;
-
-                if (buyOrder.price >= sellOrder.price) {
-                    uint matchedQuantity = min(buyOrder.quantity, sellOrder.quantity);
-                    uint matchedPrice = sellOrder.price;
-
-                    buyOrder.quantity -= matchedQuantity;
-                    sellOrder.quantity -= matchedQuantity;
-
-                    participants[sellOrder.trader].energyBalance -= matchedQuantity;
-                    participants[buyOrder.trader].energyBalance += matchedQuantity;
-
-                    if (buyOrder.quantity == 0) {
-                        buyOrder.isActive = false;
-                        return 1;
-                    }
-
-                    if (sellOrder.quantity == 0) {
-                        sellOrder.isActive = false;
-                        removeOrder(sellOrders, j);
-                        j--;
-                    }
-
-                    trades.push(Trade({
-                        buyer : buyOrder.trader,
-                        seller: sellOrder.trader,
-                        energyAmount: matchedQuantity,
-                        price: matchedPrice
-                    }));
-
-                    emit OrderMatched(buyOrder.id, sellOrder.id, buyOrder.trader, sellOrder.trader, matchedPrice, matchedQuantity);
-                    break;
-                }
+    function updateParticipantData(uint128[24] calldata _sellingPrices, uint128[24] calldata _buyingPrices) external onlyEditHours {
+        Participant storage participant = participants[msg.sender];
+        require(participant.exists, "Participant not registered");
+        
+        for (uint8 i = 0; i < 24; i++) {
+            if (participant.sellingPrices[i] != _sellingPrices[i]) {
+                participant.sellingPrices[i] = _sellingPrices[i];
             }
-            return 0;
-        }
-    
-
-    function matchSellOrders(uint ID) internal returns(uint256 n){
-            Order storage sellOrder = orders[ID];
-
-            for (uint i = 0; i < buyOrders.length; i++) {
-            Order storage buyOrder = orders[buyOrders[i]];
-            if (!buyOrder.isActive) continue;
-
-                if (buyOrder.price >= sellOrder.price) {
-                    uint matchedQuantity = min(buyOrder.quantity, sellOrder.quantity);
-                    uint matchedPrice = sellOrder.price;
-
-                    buyOrder.quantity -= matchedQuantity;
-                    sellOrder.quantity -= matchedQuantity;
-
-                    participants[sellOrder.trader].energyBalance -= matchedQuantity;
-                    participants[buyOrder.trader].energyBalance += matchedQuantity;
-
-                    if (buyOrder.quantity == 0) {
-                        buyOrder.isActive = false;
-                        removeOrder(buyOrders, i);
-                        i--;
-                    }
-
-                    if (sellOrder.quantity == 0) {
-                        sellOrder.isActive = false;
-                        return 1;
-                    }
-
-                    trades.push(Trade({
-                        buyer : buyOrder.trader,
-                        seller: sellOrder.trader,
-                        energyAmount: matchedQuantity,
-                        price: matchedPrice
-                    }));
-
-                    emit OrderMatched(buyOrder.id, sellOrder.id, buyOrder.trader, sellOrder.trader, matchedPrice, matchedQuantity);
-                    break;
-                }
-            }
-            return 0;
-        }
-    
-
-    function cancelOrder(uint orderId) external {
-        Order storage order = orders[orderId];
-        require(order.trader == msg.sender, "Only the trader can cancel this order");
-        require(order.isActive, "Order is not active");
-
-        order.isActive = false;
-
-        if (order.orderType == OrderType.Buy) {
-            removeOrder(buyOrders, findOrderIndex(buyOrders, orderId));
-        } else {
-            removeOrder(sellOrders, findOrderIndex(sellOrders, orderId));
-        }
-
-        emit OrderCancelled(orderId);
-    }
-
-    function findOrderIndex(uint[] storage orderList, uint orderId) internal view returns (uint) {
-        for (uint i = 0; i < orderList.length; i++) {
-            if (orderList[i] == orderId) {
-                return i;
+            if (participant.buyingPrices[i] != _buyingPrices[i]) {
+                participant.buyingPrices[i] = _buyingPrices[i];
             }
         }
-        revert("Order not found");
     }
 
-    function removeOrder(uint[] storage orderList, uint index) internal {
-        require(index < orderList.length, "Invalid index");
-        orderList[index] = orderList[orderList.length - 1];
-        orderList.pop();
+    function updateHour(uint8 newHour) external onlyOwner {
+        require(newHour < 24, "Invalid hour");
+        currentHour = newHour;
+        emit HourUpdated(newHour);
+        
+        if (currentHour >= 6 || currentHour == 0) {
+            matchOrders(currentHour);
+            chargeUnmatched(currentHour);
+        }
     }
-
-    function min(uint a, uint b) internal pure returns (uint) {
-        return a < b ? a : b;
-    }
-
     
+    function matchOrders(uint8 hour) internal {
+        require(hour < 24, "Invalid hour");
 
-    // Consumers consume energy
-    function consumeEnergy(uint256 _amount) external {
-        require(participants[msg.sender].energyBalance >= _amount, "Insufficient energy balance");
-        participants[msg.sender].energyBalance -= _amount;
-        emit EnergyConsumed(msg.sender, _amount);
+        for (uint8 group = 1; group <= 6; group++) {
+            emit NeedSorting(hour, group);
+        }
     }
 
-    // Get details of a trade
-    function getTrade(uint256 _tradeId) external view returns (Trade memory) {
-        return trades[_tradeId];
+    function submitSortedAddresses(
+        uint256 hour,
+        uint8 group,
+        address[] calldata sortedSellers,
+        address[] calldata sortedBuyers
+    ) external onlyOwner {
+        require(hour < 24, "Invalid hour");
+        require(group >= 1 && group <= 6, "Invalid group");
+
+        matchOrdersWithSortedAddresses(uint8(hour), group, sortedSellers, sortedBuyers);
     }
 
-    // Get details of a participant
-    function getParticipant(address _participant) external view returns (Participant memory) {
-        return participants[_participant];
+    function matchOrdersWithSortedAddresses(
+        uint8 hour,
+        uint8 group,
+        address[] memory sortedSellers,
+        address[] memory sortedBuyers
+    ) internal {
+        for (uint256 i = 0; i < sortedSellers.length; i++) {
+            address sellerAddr = sortedSellers[i];
+            Participant storage seller = participants[sellerAddr];
+            
+            if (seller.group != group) continue;
+            
+            uint128 excess = 0;
+            if (seller.generation[hour] > seller.consumption[hour]) {
+                excess = seller.generation[hour] - seller.consumption[hour];
+            }
+            
+            if (excess == 0) continue;
+            
+            for (uint256 j = 0; j < sortedBuyers.length && excess > 0; j++) {
+                excess = processMatch(
+                    sellerAddr,
+                    sortedBuyers[j],
+                    hour,
+                    group,
+                    excess,
+                    seller.sellingPrices[hour]
+                );
+            }
+        }
+    }
+
+    function processMatch(
+        address sellerAddr,
+        address buyerAddr,
+        uint8 hour,
+        uint8 group,
+        uint128 excess,
+        uint128 sellingPrice
+    ) internal returns (uint128) {
+        Participant storage buyer = participants[buyerAddr];
+        
+        if (buyer.group != group || buyer.consumption[hour] == 0 || buyer.buyingPrices[hour] < sellingPrice) {
+            return excess;
+        }
+        
+        uint128 needed = buyer.consumption[hour];
+        uint128 matched = needed > excess ? excess : needed;
+        
+        if (matched == 0) return excess;
+        
+        buyer.consumption[hour] -= matched;
+        
+        emit TradeExecuted(sellerAddr, buyerAddr, hour, matched, sellingPrice);
+        
+        return excess - matched;
+    }
+
+    function chargeUnmatched(uint8 hour) internal {
+    for (uint256 i = 0; i < participantAddresses.length; i++) {
+        address participantAddr = participantAddresses[i];
+        Participant storage p = participants[participantAddr];
+        
+        if (!p.isProsumer && p.consumption[hour] > 0) {
+            emit UnmatchedConsumption(participantAddr, hour, p.consumption[hour], unmatchedConsumptionPrice[hour]);
+        } else if (p.isProsumer) {
+            uint256 unmatchedGeneration = 0;
+            if (p.generation[hour] > p.consumption[hour]) {
+                unmatchedGeneration = p.generation[hour] - p.consumption[hour];
+            }
+            
+            if (unmatchedGeneration > 0) {
+                emit UnmatchedGeneration(participantAddr, hour, unmatchedGeneration, unmatchedGenerationReward[hour]);
+            }
+        }
+    }
+}
+
+    function setUnmatchedPrices(uint128[24] calldata _consumptionPrices, uint128[24] calldata _generationRewards) external onlyOwner {
+        unmatchedConsumptionPrice = _consumptionPrices;
+        unmatchedGenerationReward = _generationRewards;
+    }
+
+    function getParticipantCount() external view returns (uint256) {
+        return participantAddresses.length;
     }
 }
