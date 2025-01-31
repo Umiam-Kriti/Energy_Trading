@@ -10,6 +10,31 @@ const contract = new web3.eth.Contract(contractABI, contractAddress);
 const ownerPrivateKey = "YOUR_OWNER_PRIVATE_KEY";
 const ownerAddress = "0xYourOwnerAddress";
 
+function updateHour() {
+    const currentHour = new Date().getHours();
+    
+    contract.methods.updateHour(currentHour).send({ from: 'YOUR_ACCOUNT_ADDRESS' })
+      .then(receipt => {
+        console.log(`Hour updated to ${currentHour}. Transaction hash: ${receipt.transactionHash}`);
+      })
+      .catch(error => {
+        console.error('Error updating hour:', error);
+      });
+  }
+  
+  function scheduleHourlyUpdate() {
+    const now = new Date();
+    const msUntilNextHour = 3600000 - (now.getMinutes() * 60000 + now.getSeconds() * 1000 + now.getMilliseconds());
+    
+    setTimeout(() => {
+      updateHour();
+      setInterval(updateHour, 3600000); // Call every hour (3600000 ms)
+    }, msUntilNextHour);
+  }
+  
+  // Start the scheduling
+  scheduleHourlyUpdate();
+  
 // Store sorted buyers for the day (to avoid redundant sorting)
 let sortedBuyersForDay = {};
 
