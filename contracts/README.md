@@ -10,5 +10,6 @@ npx hardhat test
 REPORT_GAS=true npx hardhat test
 npx hardhat node
 npx hardhat ignition deploy ./ignition/modules/Lock.ts
+npm install circomlib
 npm install -g circom snarkjs
 ```
