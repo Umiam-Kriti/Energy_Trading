@@ -20,16 +20,17 @@ contract EnergyTrading is Ownable, ReentrancyGuard {
         bool isProducer;
         bool isRegistered;
         bool isActive;
+        bool isStorage;
         uint256 group;
         uint256 energyBalance;
         int256 balance;
         uint256 lastPaymentDate;
+        uint256 storedEnergy;
+        uint256 criticalLoad; // in 0.01 kW
         uint256[24] sellingPrices;
         uint256[24] buyingPrices;
         uint256[24] generation;
         uint256[24] consumption;
-        uint256 storedEnergy;
-        uint256 criticalLoad; // in 0.01 kW
     }
 
     struct BatchStoredTrade {
@@ -79,6 +80,7 @@ contract EnergyTrading is Ownable, ReentrancyGuard {
     error InvalidPrice();
     error InsufficientPayment();
     error NoProsumerBalance();
+    error NoStorage();
 
     modifier onlyActiveParticipant() {
         if (!participants[msg.sender].isActive) revert ParticipantNotActive();
@@ -107,7 +109,7 @@ contract EnergyTrading is Ownable, ReentrancyGuard {
         300,300,289,276];
     }
 
-    function registerParticipant(uint8 group, bool isProducer, uint256 pcLoad) external {
+    function registerParticipant(uint8 group, bool isProducer, bool loob, uint256 pcLoad) external {
     require(!participants[msg.sender].isRegistered, "Already registered");
     require(group >= 0 && group < 6, "Invalid group");
     
@@ -124,6 +126,7 @@ contract EnergyTrading is Ownable, ReentrancyGuard {
         group: group,
         isActive: true,
         lastPaymentDate: block.timestamp,
+        isStorage: loob,
         storedEnergy: 0,
         criticalLoad: pcLoad
     });
@@ -148,6 +151,7 @@ contract EnergyTrading is Ownable, ReentrancyGuard {
         for (uint256 i = 0; i < trades.length; i++) {
             BatchStoredTrade memory trade = trades[i];
             
+            if (participants[trade.seller].isStorage==false) revert NoStorage();
             require(participants[trade.seller].storedEnergy >= trade.quantity, 
                 "Insufficient stored energy");
             require(participants[trade.buyer].isActive && participants[trade.seller].isActive, 
