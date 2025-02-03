@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
 contract OptimizedP2PEnergyTrading is Ownable, ReentrancyGuard {
 
@@ -30,11 +31,22 @@ contract OptimizedP2PEnergyTrading is Ownable, ReentrancyGuard {
         uint256[24] buyingPrices;
         uint256[24] generation;
         uint256[24] consumption;
+        uint256 storedEnergy;
+        uint256 criticalLoad; // in 0.01 kW
+    }
+
+    struct BatchStoredTrade {
+        address buyer;
+        address seller;
+        uint256 price;
+        uint256 quantity;
     }
 
     mapping(address => Participant) public participants;
     mapping(uint256 => address[]) private groupParticipants;
     mapping(uint256 => address[]) public sortedBuyersForDay;
+    mapping(uint256 => mapping(uint256 => string)) public groupCIDs; // group => hour => CID
+    mapping(uint256 => mapping(uint256 => bytes32)) public merkleRoots; // group => hour => root
 
     uint256 public currentHour;
     uint256[24] public unmatchedConsumptionPrice;
@@ -54,7 +66,11 @@ contract OptimizedP2PEnergyTrading is Ownable, ReentrancyGuard {
     event ParticipantDataUpdated(address indexed participant);
     event NeedSorting(uint256 hour, uint256 group, address[] people, bool isBuyer);
     event BuyersSorted(uint256 group, address[] sortedBuyers);
-    event MQTTDataReceived(address indexed participant, uint256 hour, uint256 generation, uint256 consumption);
+    event BatchEnergyDataUpdated(uint256 indexed group, uint256 indexed hour, uint256 batchSize);
+    event GroupGeneration(uint256 indexed group, uint256 indexed hour, uint256 groupgen);
+    event GroupConsumption(uint256 indexed group, uint256 indexed hour, uint256 groupcon);
+    event CIDStored(uint256 indexed group, uint256 indexed hour, string cid);
+    event StoredEnergyTradeSettled(address indexed buyer, address indexed seller, uint256 quantity, uint256 price);
 
     error NotAuthorized();
     error ParticipantNotActive();
@@ -94,7 +110,7 @@ contract OptimizedP2PEnergyTrading is Ownable, ReentrancyGuard {
         300,300,289,276];
     }
 
-    function registerParticipant(uint8 group, bool isProducer) external {
+    function registerParticipant(uint8 group, bool isProducer, uint256 pcLoad) external {
     require(!participants[msg.sender].isRegistered, "Already registered");
     require(group >= 0 && group < 6, "Invalid group");
     
@@ -110,7 +126,9 @@ contract OptimizedP2PEnergyTrading is Ownable, ReentrancyGuard {
         consumption: zeroArray,
         group: group,
         isActive: true,
-        lastPaymentDate: block.timestamp
+        lastPaymentDate: block.timestamp,
+        storedEnergy: 0,
+        criticalLoad: pcLoad
     });
     
     groupParticipants[group].push(msg.sender);
@@ -129,35 +147,58 @@ contract OptimizedP2PEnergyTrading is Ownable, ReentrancyGuard {
         emit ParticipantDataUpdated(msg.sender);
     }
 
+    function settleStoredEnergyTrades(BatchStoredTrade[] calldata trades) external onlyOwner {
+        for (uint256 i = 0; i < trades.length; i++) {
+            BatchStoredTrade memory trade = trades[i];
+            
+            require(participants[trade.seller].storedEnergy >= trade.quantity, 
+                "Insufficient stored energy");
+            require(participants[trade.buyer].isActive && participants[trade.seller].isActive, 
+                "Inactive participant");
+            require(trade.quantity <=  (3 * participants[trade.buyer].criticalLoad /10), 
+                "Inactive participant");
+
+            // Transfer stored energy
+            participants[trade.seller].storedEnergy -= trade.quantity;
+            participants[trade.buyer].energyBalance += trade.quantity;
+
+            // Handle payment
+            uint256 totalPrice = trade.price * trade.quantity;
+            uint256 commission = totalPrice * SERVICE_RATE ; // Apply service fee
+            uint256 sellerRevenue = totalPrice - commission;
+
+            updateBalance(trade.buyer, -int256(totalPrice));
+            updateBalance(trade.seller, int256(sellerRevenue));
+
+            emit StoredEnergyTradeSettled(trade.buyer, trade.seller, trade.quantity, trade.price);
+        }
+    }
+
+    // function to store energy from generation
+    function storeEnergy(uint256 amount) external onlyActiveParticipant {
+        require(participants[msg.sender].generation[currentHour] >= amount, 
+            "Insufficient generation");
+        
+        participants[msg.sender].generation[currentHour] -= amount;
+        participants[msg.sender].storedEnergy += amount;
+    }
+
+
     function updateHour(uint256 newHour) external onlyOwner {
         if (newHour >= 24) revert InvalidHour();
         if (currentHour == newHour) revert NoUpdate();
         currentHour = newHour;
         emit HourUpdated(newHour);
-        
-        if (currentHour == 0) {
-            matchOrders(23);
-        } else if (currentHour <= 1 || currentHour >= 6) {
-            matchOrders(currentHour.sub(1));
-        } else {
-            chargeUnmatched(currentHour.sub(1));
-        }
     }
 
-    function matchOrders(uint256 hour) internal {
+    function matchOrders(uint256 hour, uint256 group) internal {
         if (hour == 1) {
-            for (uint256 group = 0; group < 6; group++) {
                 address[] memory buyers = groupParticipants[group];
                 emit NeedSorting(hour, group, buyers, true);
-            }
         }
 
-        if (hour >= 18 || hour < 6) revert InvalidHour();
-
-        for (uint256 group = 0; group < 6; group++) {
             address[] memory sellers = groupParticipants[group];
             emit NeedSorting(hour, group, sellers, false);
-        }
     }
 
     function submitSortedAddresses(
@@ -195,7 +236,7 @@ contract OptimizedP2PEnergyTrading is Ownable, ReentrancyGuard {
                 excess = processMatch(sellerAddr, sortedBuyers[j], hour, group, excess, seller.sellingPrices[hour]);
             }
         }
-        chargeUnmatched(hour);
+        chargeUnmatched(hour,group);
     }
 
     function processMatch(
@@ -217,7 +258,8 @@ contract OptimizedP2PEnergyTrading is Ownable, ReentrancyGuard {
             return excess;
         }
     
-        uint256 needed = buyer.consumption[hour];
+        uint256 needed = buyer.consumption[hour] > buyer.energyBalance ? buyer.consumption[hour].sub(buyer.energyBalance): 0;
+        buyer.energyBalance=buyer.energyBalance > buyer.consumption[hour] ? buyer.energyBalance.sub(buyer.consumption[hour]): 0;
         uint256 matched = needed > excess ? excess : needed;
     
         if (matched == 0) return excess;
@@ -241,8 +283,7 @@ contract OptimizedP2PEnergyTrading is Ownable, ReentrancyGuard {
         return excess.sub(matched);
     }
 
-    function chargeUnmatched(uint256 hour) internal {
-        for (uint256 group = 0; group < 6; group++) {
+    function chargeUnmatched(uint256 hour, uint256 group) internal {
             address[] storage groupParticipantList = groupParticipants[group];
             for (uint256 i = 0; i < groupParticipantList.length; i++) {
                 address participantAddr = groupParticipantList[i];
@@ -261,7 +302,6 @@ contract OptimizedP2PEnergyTrading is Ownable, ReentrancyGuard {
                     emit UnmatchedGeneration(participantAddr, hour, p.generation[hour], unmatchedGenerationReward[hour]);
                 }
             }
-        }
     }
 
     function updateBalance(address participant, int256 change) internal {
@@ -326,16 +366,88 @@ contract OptimizedP2PEnergyTrading is Ownable, ReentrancyGuard {
         emit BalanceUpdated(prosumer, amount);
     }
 
-    function updateEnergyData(address _userAddress, uint256 _generation, uint256 _consumption) external onlyOwner {
-    require(participants[_userAddress].isRegistered, "User not registered");
-    require(participants[_userAddress].isActive, "User not active");
+    function storeEnergyCID(
+        uint256 _group,
+        uint256 _hour,
+        string calldata _cid
+    ) external onlyOwner {
+        require(_group < 6, "Invalid group");
+        require(_hour < 24, "Invalid hour");
+        require(bytes(_cid).length >= 46, "Invalid CID format");
+    
+        groupCIDs[_group][_hour] = _cid;
+        emit CIDStored(_group, _hour, _cid);
+    }
 
-    uint256 hour = currentHour-1;
-    participants[_userAddress].generation[hour] = _generation;
-    participants[_userAddress].consumption[hour] = _consumption;
-
-    emit MQTTDataReceived(_userAddress, hour, _generation, _consumption);
+    function getEnergyCID(uint256 _group, uint256 _hour) external view returns (string memory) {
+    require(_group < 6, "Invalid group");
+    require(_hour < 24, "Invalid hour");
+    
+    return groupCIDs[_group][_hour];
 }
+
+    struct EnergyData {
+        address userAddress;
+        uint256 generation;
+        uint256 consumption;
+    }
+
+    function updateEnergyDataBatch(uint256 _group, EnergyData[] calldata _batchData) external onlyOwner {
+        require(_group < 6, "Invalid group");
+        require(_batchData.length > 0, "Empty batch");
+        
+        uint256 hour = currentHour > 0 ? currentHour - 1 : 23;
+
+        uint256 gg=0;
+        uint256 gc=0;
+        
+        for (uint256 i = 0; i < _batchData.length; i++) {
+            address userAddress = _batchData[i].userAddress;
+            require(participants[userAddress].isRegistered, "User not registered");
+            require(participants[userAddress].isActive, "User not active");
+            require(participants[userAddress].group == _group, "User not in specified group");
+            
+            participants[userAddress].generation[hour] = _batchData[i].generation;
+            participants[userAddress].consumption[hour] = _batchData[i].consumption;
+
+            gg+=_batchData[i].generation;
+            gc+=_batchData[i].consumption;
+        }
+        
+        if (currentHour == 0) {
+            chargeUnmatched(23,_group);
+        } else if (currentHour < 18 && currentHour >= 6) {
+            matchOrders(hour,_group);
+        } else {
+            chargeUnmatched(hour,_group);
+        }
+
+        emit BatchEnergyDataUpdated(_group, hour, _batchData.length);
+        emit GroupGeneration(_group, hour, gg);
+        emit GroupConsumption(_group, hour, gc);
+    } 
+
+    function setMerkleRoot(
+        uint256 group, 
+        uint256 hour, 
+        bytes32 root
+    ) external onlyOwner {
+        require(group < 6, "Invalid group");
+        require(hour < 24, "Invalid hour");
+        merkleRoots[group][hour] = root;
+    }
+
+    function verifyData(
+        uint256 group,
+        uint256 hour,
+        address user,
+        uint256 generation,
+        uint256 consumption,
+        bytes32[] calldata proof
+    ) public view returns (bool) {
+        bytes32 leaf = keccak256(abi.encodePacked(user, generation, consumption));
+        return MerkleProof.verify(proof, merkleRoots[group][hour], leaf);
+    }  
 }
 
 
