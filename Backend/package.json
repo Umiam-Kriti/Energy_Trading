@@ -1,0 +1,36 @@
+{
+  "name": "package.json",
+  "version": "1.0.0",
+  "description": "API for energy and carbon credit management",
+  "main": "server.js",
+  "scripts": {
+    "test": "jest",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "backend_defi_project"
+  },
+  "author": "Yesh",
+  "license": "ISC",
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "supertest": "^7.0.0"
+  },
+  "dependencies": {
+    "body-parser": "^1.20.3",
+    "circomlib": "^2.0.5",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.9.5",
+    "snarkjs": "^0.7.5",
+    "socket.io": "^4.8.1",
+    "ws": "^8.18.0"
+  },
+  "directories": {
+    "test": "tests"
+  },
+  "keywords": []
+}
