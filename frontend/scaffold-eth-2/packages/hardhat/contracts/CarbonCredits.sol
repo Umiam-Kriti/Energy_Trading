@@ -14,7 +14,7 @@ contract CarbonCreditToken is ERC20, AccessControl, ReentrancyGuard {
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
 
     // Carbon credit properties
-    uint256 public conversionRate = 1000; // 1 credit per 1000 kWh
+    uint256 public conversionRate = 1000; // 1 credit per 1000 kWh 
     uint256 public creditDecayRate = 10; // 10% annual decay
     uint256 public stakingRewardRate = 5; // 5% annual reward
 

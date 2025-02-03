@@ -15,7 +15,7 @@ contract EnergyTradingL2 is ReentrancyGuard, Ownable {
 }
 
     struct Participant {
-        bool isProducer;
+        bool isProducer; 
         bool isRegistered;
         bool isActive;
         uint256 group;
