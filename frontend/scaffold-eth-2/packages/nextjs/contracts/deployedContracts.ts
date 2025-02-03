@@ -1077,6 +1077,21 @@ const deployedContracts = {
           type: "constructor",
         },
         {
+          inputs: [],
+          name: "BatchSizeExceeded",
+          type: "error",
+        },
+        {
+          inputs: [],
+          name: "InvalidAddress",
+          type: "error",
+        },
+        {
+          inputs: [],
+          name: "InvalidTradeParameters",
+          type: "error",
+        },
+        {
           inputs: [
             {
               internalType: "address",
@@ -1099,6 +1114,44 @@ const deployedContracts = {
           type: "error",
         },
         {
+          inputs: [],
+          name: "ReentrancyGuardReentrantCall",
+          type: "error",
+        },
+        {
+          inputs: [],
+          name: "TimelockNotExpired",
+          type: "error",
+        },
+        {
+          inputs: [],
+          name: "TradeAlreadyProcessed",
+          type: "error",
+        },
+        {
+          inputs: [],
+          name: "TradeNotFound",
+          type: "error",
+        },
+        {
+          inputs: [],
+          name: "UnauthorizedCancellation",
+          type: "error",
+        },
+        {
+          anonymous: false,
+          inputs: [
+            {
+              indexed: false,
+              internalType: "address",
+              name: "newAddress",
+              type: "address",
+            },
+          ],
+          name: "L2ContractUpdated",
+          type: "event",
+        },
+        {
           anonymous: false,
           inputs: [
             {
@@ -1115,6 +1168,32 @@ const deployedContracts = {
             },
           ],
           name: "OwnershipTransferred",
+          type: "event",
+        },
+        {
+          anonymous: false,
+          inputs: [
+            {
+              indexed: false,
+              internalType: "uint256[]",
+              name: "tradeIds",
+              type: "uint256[]",
+            },
+          ],
+          name: "TradeBatchSettled",
+          type: "event",
+        },
+        {
+          anonymous: false,
+          inputs: [
+            {
+              indexed: true,
+              internalType: "uint256",
+              name: "tradeId",
+              type: "uint256",
+            },
+          ],
+          name: "TradeCancelled",
           type: "event",
         },
         {
@@ -1141,18 +1220,50 @@ const deployedContracts = {
             {
               indexed: false,
               internalType: "uint256",
-              name: "energyAmount",
+              name: "quantity",
               type: "uint256",
             },
             {
               indexed: false,
               internalType: "uint256",
-              name: "pricePerUnit",
+              name: "price",
+              type: "uint256",
+            },
+            {
+              indexed: false,
+              internalType: "bytes32",
+              name: "tradeHash",
+              type: "bytes32",
+            },
+          ],
+          name: "TradeRegistered",
+          type: "event",
+        },
+        {
+          anonymous: false,
+          inputs: [
+            {
+              indexed: false,
+              internalType: "uint256",
+              name: "newTimelock",
               type: "uint256",
             },
           ],
-          name: "TradeSettled",
+          name: "ValidationTimelockUpdated",
           type: "event",
+        },
+        {
+          inputs: [
+            {
+              internalType: "uint256",
+              name: "tradeId",
+              type: "uint256",
+            },
+          ],
+          name: "cancelTrade",
+          outputs: [],
+          stateMutability: "nonpayable",
+          type: "function",
         },
         {
           inputs: [],
@@ -1162,6 +1273,55 @@ const deployedContracts = {
               internalType: "address",
               name: "",
               type: "address",
+            },
+          ],
+          stateMutability: "view",
+          type: "function",
+        },
+        {
+          inputs: [
+            {
+              internalType: "uint256",
+              name: "tradeId",
+              type: "uint256",
+            },
+          ],
+          name: "getTradeDetails",
+          outputs: [
+            {
+              internalType: "address",
+              name: "buyer",
+              type: "address",
+            },
+            {
+              internalType: "address",
+              name: "seller",
+              type: "address",
+            },
+            {
+              internalType: "uint256",
+              name: "quantity",
+              type: "uint256",
+            },
+            {
+              internalType: "uint256",
+              name: "price",
+              type: "uint256",
+            },
+            {
+              internalType: "uint256",
+              name: "timestamp",
+              type: "uint256",
+            },
+            {
+              internalType: "bool",
+              name: "isProcessed",
+              type: "bool",
+            },
+            {
+              internalType: "bytes32",
+              name: "tradeHash",
+              type: "bytes32",
             },
           ],
           stateMutability: "view",
@@ -1194,8 +1354,74 @@ const deployedContracts = {
           type: "function",
         },
         {
+          inputs: [
+            {
+              internalType: "bytes32",
+              name: "",
+              type: "bytes32",
+            },
+          ],
+          name: "processedTradeHashes",
+          outputs: [
+            {
+              internalType: "bool",
+              name: "",
+              type: "bool",
+            },
+          ],
+          stateMutability: "view",
+          type: "function",
+        },
+        {
+          inputs: [
+            {
+              internalType: "address",
+              name: "buyer",
+              type: "address",
+            },
+            {
+              internalType: "address",
+              name: "seller",
+              type: "address",
+            },
+            {
+              internalType: "uint256",
+              name: "quantity",
+              type: "uint256",
+            },
+            {
+              internalType: "uint256",
+              name: "price",
+              type: "uint256",
+            },
+          ],
+          name: "registerTrade",
+          outputs: [
+            {
+              internalType: "uint256",
+              name: "",
+              type: "uint256",
+            },
+          ],
+          stateMutability: "nonpayable",
+          type: "function",
+        },
+        {
           inputs: [],
           name: "renounceOwnership",
+          outputs: [],
+          stateMutability: "nonpayable",
+          type: "function",
+        },
+        {
+          inputs: [
+            {
+              internalType: "uint256[]",
+              name: "tradeIds",
+              type: "uint256[]",
+            },
+          ],
+          name: "settleTrades",
           outputs: [],
           stateMutability: "nonpayable",
           type: "function",
@@ -1211,11 +1437,6 @@ const deployedContracts = {
           name: "trades",
           outputs: [
             {
-              internalType: "uint256",
-              name: "tradeId",
-              type: "uint256",
-            },
-            {
               internalType: "address",
               name: "buyer",
               type: "address",
@@ -1227,18 +1448,28 @@ const deployedContracts = {
             },
             {
               internalType: "uint256",
-              name: "energyAmount",
+              name: "quantity",
               type: "uint256",
             },
             {
               internalType: "uint256",
-              name: "pricePerUnit",
+              name: "price",
               type: "uint256",
             },
             {
               internalType: "uint256",
               name: "timestamp",
               type: "uint256",
+            },
+            {
+              internalType: "bool",
+              name: "isProcessed",
+              type: "bool",
+            },
+            {
+              internalType: "bytes32",
+              name: "tradeHash",
+              type: "bytes32",
             },
           ],
           stateMutability: "view",
@@ -1268,6 +1499,32 @@ const deployedContracts = {
           name: "updateEnergyTradingL2Address",
           outputs: [],
           stateMutability: "nonpayable",
+          type: "function",
+        },
+        {
+          inputs: [
+            {
+              internalType: "uint256",
+              name: "_newTimelock",
+              type: "uint256",
+            },
+          ],
+          name: "updateValidationTimelock",
+          outputs: [],
+          stateMutability: "nonpayable",
+          type: "function",
+        },
+        {
+          inputs: [],
+          name: "validationTimelock",
+          outputs: [
+            {
+              internalType: "uint256",
+              name: "",
+              type: "uint256",
+            },
+          ],
+          stateMutability: "view",
           type: "function",
         },
       ],
