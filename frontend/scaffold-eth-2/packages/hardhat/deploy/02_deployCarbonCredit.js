@@ -16,4 +16,4 @@ module.exports = async function ({ getNamedAccounts, deployments }) {
     console.log(`✅ CarbonCreditToken deployed at: ${carbonCreditToken.address}`);
 };
 
-module.exports.tags = ["CarbonCreditToken"]; 
+module.exports.tags = ["CarbonCreditToken"];  

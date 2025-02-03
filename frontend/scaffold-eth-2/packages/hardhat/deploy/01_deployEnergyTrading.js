@@ -16,4 +16,4 @@ module.exports = async function ({ getNamedAccounts, deployments }) {
     console.log(`✅ EnergyTradingL2 deployed at: ${energyTradingL2.address}`);
 };
 
-module.exports.tags = ["EnergyTradingL2"]; 
+module.exports.tags = ["EnergyTradingL2"];  
