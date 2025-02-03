@@ -22,7 +22,7 @@ contract CarbonCreditToken is ERC20, AccessControl, ReentrancyGuard {
     struct Listing {
         address seller;
         uint256 price;
-        uint256 amount;
+        uint256 amount; 
         uint256 listingDate;
     }
 
@@ -66,13 +66,13 @@ contract CarbonCreditToken is ERC20, AccessControl, ReentrancyGuard {
     ) external onlyRole(MINTER_ROLE) nonReentrant {
         require(!blacklisted[producer], "Blacklisted address");
         require(energyAmount >= conversionRate, "Insufficient energy");
-        // require(verifyEnergyProof(producer, energyAmount, proof), "Invalid proof");
+        // require(verifyEnergyProof(producer, energyAmount, proof), "Invalid proof");    
 
         uint256 creditsToMint = energyAmount / conversionRate;
         _mint(producer, creditsToMint);
 
         renewableEnergyGenerated[producer] += energyAmount;
-        lastCreditMintDate[producer] = block.timestamp;
+        lastCreditMintDate[producer] = block.timestamp; 
 
         emit CreditsMinted(producer, energyAmount, creditsToMint);
     }
