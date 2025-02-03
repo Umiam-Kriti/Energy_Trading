@@ -8,7 +8,7 @@ async function main() {
   console.log("Account balance:", (await deployer.getBalance()).toString());
 
   const EnergyTradingBridge = await ethers.getContractFactory("EnergyTradingBridge");
-  const energyTradingBridge = await EnergyTradingBridge.deploy(energyTradingL2Address);
+  const energyTradingBridge = await EnergyTradingBridge.deploy(energyTradingL2Address); 
   await energyTradingBridge.deployed();
 
   console.log("EnergyTradingBridge deployed to:", energyTradingBridge.address);
