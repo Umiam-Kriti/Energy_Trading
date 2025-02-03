@@ -3,7 +3,6 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
 contract OptimizedP2PEnergyTrading is Ownable, ReentrancyGuard {
@@ -16,8 +15,6 @@ contract OptimizedP2PEnergyTrading is Ownable, ReentrancyGuard {
         initializeDefaultPrices();
         lastBillingCycle = block.timestamp;
     }
-
-    using SafeMath for uint256;
 
     struct Participant {
         bool isProducer;
@@ -228,7 +225,7 @@ contract OptimizedP2PEnergyTrading is Ownable, ReentrancyGuard {
             if (!seller.isActive) continue;
             
             uint256 excess = seller.generation[hour] > seller.consumption[hour] ?
-                seller.generation[hour].sub(seller.consumption[hour]) : 0;
+                seller.generation[hour] - (seller.consumption[hour]) : 0;
             
             if (excess == 0) continue;
             
@@ -258,19 +255,19 @@ contract OptimizedP2PEnergyTrading is Ownable, ReentrancyGuard {
             return excess;
         }
     
-        uint256 needed = buyer.consumption[hour] > buyer.energyBalance ? buyer.consumption[hour].sub(buyer.energyBalance): 0;
-        buyer.energyBalance=buyer.energyBalance > buyer.consumption[hour] ? buyer.energyBalance.sub(buyer.consumption[hour]): 0;
+        uint256 needed = buyer.consumption[hour] > buyer.energyBalance ? buyer.consumption[hour] - (buyer.energyBalance): 0;
+        buyer.energyBalance=buyer.energyBalance > buyer.consumption[hour] ? buyer.energyBalance - (buyer.consumption[hour]): 0;
         uint256 matched = needed > excess ? excess : needed;
     
         if (matched == 0) return excess;
     
-        buyer.consumption[hour] = buyer.consumption[hour].sub(matched);
-        seller.generation[hour] = seller.generation[hour].sub(matched);
+        buyer.consumption[hour] = buyer.consumption[hour] - (matched);
+        seller.generation[hour] = seller.generation[hour] - (matched);
 
         if (sellerAddr != buyerAddr) {  // Only process payment if not self-matching
-            uint256 totalPrice = matched.mul(sellingPrice);
-            uint256 commission = matched.mul(SERVICE_RATE);
-            uint256 sellerRevenue = totalPrice.sub(commission);
+            uint256 totalPrice = matched * (sellingPrice);
+            uint256 commission = matched * (SERVICE_RATE);
+            uint256 sellerRevenue = totalPrice - (commission);
         
             updateBalance(buyerAddr, -int256(totalPrice));
             updateBalance(sellerAddr, int256(sellerRevenue));
@@ -280,7 +277,7 @@ contract OptimizedP2PEnergyTrading is Ownable, ReentrancyGuard {
             emit TradeExecuted(sellerAddr, buyerAddr, hour, matched, 0);
         }
 
-        return excess.sub(matched);
+        return excess - (matched);
     }
 
     function chargeUnmatched(uint256 hour, uint256 group) internal {
@@ -292,12 +289,12 @@ contract OptimizedP2PEnergyTrading is Ownable, ReentrancyGuard {
                 if (!p.isActive) continue;
 
                 if (p.consumption[hour] > 0) {
-                    uint256 unmatchedCost = p.consumption[hour].mul(unmatchedConsumptionPrice[hour]);
+                    uint256 unmatchedCost = p.consumption[hour] * (unmatchedConsumptionPrice[hour]);
                     updateBalance(participantAddr, -int256(unmatchedCost));
                     emit UnmatchedConsumption(participantAddr, hour, p.consumption[hour], unmatchedConsumptionPrice[hour]);
                 } 
                 if (p.isProducer && p.generation[hour] > 0) {
-                    uint256 reward = p.generation[hour].mul(unmatchedGenerationReward[hour]);
+                    uint256 reward = p.generation[hour] * (unmatchedGenerationReward[hour]);
                     updateBalance(participantAddr, int256(reward));
                     emit UnmatchedGeneration(participantAddr, hour, p.generation[hour], unmatchedGenerationReward[hour]);
                 }
@@ -362,7 +359,7 @@ contract OptimizedP2PEnergyTrading is Ownable, ReentrancyGuard {
         
         int256 amount = -participant.balance;
         participant.balance = 0;
-        payable(prosumer).transfer(uint256(amount).mul(GIGA));
+        payable(prosumer).transfer(uint256(amount) * (GIGA));
         emit BalanceUpdated(prosumer, amount);
     }
 
