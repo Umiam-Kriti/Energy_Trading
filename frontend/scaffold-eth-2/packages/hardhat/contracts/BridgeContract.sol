@@ -31,7 +31,6 @@ contract EnergyTradingBridge is Ownable, ReentrancyGuard {
     
     uint256 public nextTradeId = 1;
     address public energyTradingL2Address;
-    uint256 public constant MAX_BATCH_SIZE = 50;
     uint256 public validationTimelock = 1 hours;
     
     event TradeRegistered(
@@ -91,7 +90,6 @@ contract EnergyTradingBridge is Ownable, ReentrancyGuard {
     }
 
     function settleTrades(uint256[] calldata tradeIds) external nonReentrant onlyOwner {
-        if (tradeIds.length > MAX_BATCH_SIZE) revert BatchSizeExceeded();
 
         IEnergyTradingL2.BatchStoredTrade[] memory batchTrades = 
             new IEnergyTradingL2.BatchStoredTrade[](tradeIds.length);
@@ -167,4 +165,4 @@ contract EnergyTradingBridge is Ownable, ReentrancyGuard {
             trade.tradeHash
         );
     }
-}
+} 
