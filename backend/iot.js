@@ -1,6 +1,15 @@
 const mqtt = require('mqtt');
 const Web3 = require('web3');
 const schedule = require('node-schedule');
+const { create } = require('ipfs-http-client');
+const ipfs = create({
+    host: 'ipfs.infura.io',
+    port: 5001,
+    protocol: 'https',
+    headers: {
+      authorization: `Basic ${Buffer.from(`${INFURA_PROJECT_ID}:${INFURA_SECRET}`).toString('base64')}`
+    }
+  });
 
 // MQTT broker settings
 const BROKER = 'mqtt://test.mosquitto.org';
@@ -27,111 +36,137 @@ client.on('connect', () => {
   console.log('Connected to MQTT broker');
 });
 
-async function simulateAndPublishData(hour) {
+// Modified function to simulate and publish data by group
+async function simulateAndPublishDataByGroup(hour) {
   const registeredUsers = await getRegisteredUsers();
-
-  for (const [address] of Object.entries(registeredUsers)) {
-    if (hour >= 18 || hour < 6){
-      var generation = 0;
-    }
-    else if(hour == 6 || hour==17){
-      var generation = 5 * Math.floor(Math.random() * (20 - 1 + 1) + 1) ; // here if genereation = 30 it represents  0.3kWh
-    }
-    else if(hour == 7 || hour==16){
-      var generation = 12 * Math.floor(Math.random() * (20 - 1 + 1) + 1) ;
-
-    }
-    else if(hour == 8 || hour==15){
-      var generation = 24 * Math.floor(Math.random() * (20 - 1 + 1) + 1) ;  // here 24 tells the efficiency of the solar capacity
-
-    }
-    else if(hour == 9 || hour==14){
-      var generation = 36 * Math.floor(Math.random() * (20 - 1 + 1) + 1);
-
-    }
-    else if(hour == 10 || hour==13){
-      var generation = 48 * Math.floor(Math.random() * (20 - 1 + 1) + 1);
-
-    }
-    else if(hour == 11 || hour==12){
-      var  generation = 60 * Math.floor(Math.random() * (20 - 1 + 1) + 1); // here [1,20] is for energy capacity of a panel
-
-    }
-
-    if (hour >= 0 && hour < 6){
-      var consumption = 30 * Math.round(5 * Math.floor(Math.random() * (5 - 0.5 + 1) + 0.5) )  // here [0.5,5] is for the load
-    }
-    else if(hour >= 6 && hour < 9){
-      var consumption = 70 * Math.round(5 * Math.floor(Math.random() * (5 - 0.5 + 1) + 0.5) ) ; // here number 100 represents  1kWh
-    }
-    else if(hour >= 9 && hour < 12){
-      var consumption = 45 * Math.round(5 * Math.floor(Math.random() * (5 - 0.5 + 1) + 0.5) ) ; 
-    }
-    else if(hour >= 12 && hour < 15){
-      var consumption = 75 * Math.round(5 * Math.floor(Math.random() * (5 - 0.5 + 1) + 0.5) ) ; 
-    }
-    else if(hour >= 15 && hour < 18){
-      var consumption = 50 * Math.round(5 * Math.floor(Math.random() * (5 - 0.5 + 1) + 0.5) ) ; 
-    }
-    else if(hour >= 18 && hour < 21){
-      var consumption = 120 * Math.round(5 * Math.floor(Math.random() * (5 - 0.5 + 1) + 0.5) ) ; 
-    }
-    else if(hour >= 21 && hour < 24){
-      var consumption = 90 * Math.round(5 * Math.floor(Math.random() * (5 - 0.5 + 1) + 0.5) ) ; 
+  const groupedData = new Map(); // Map to store data by group
+  
+  // Process and group the data
+  for (const [address, group] of Object.entries(registeredUsers)) {
+    let generation = calculateGeneration(hour);
+    let consumption = calculateConsumption(hour);
+    
+    if (!groupedData.has(group)) {
+      groupedData.set(group, []);
     }
     
+    groupedData.get(group).push({
+      userAddress: address,
+      generation,
+      consumption
+    });
     
+    // Publish to MQTT
     const topic = `${TOPIC_PREFIX}${address}`;
     const payload = JSON.stringify({ generation, consumption });
-    
-    client.publish(topic, payload, (err) => {
-      if (err) {
-        console.error(`Error publishing for ${address}:`, err);
-      } else {
-        console.log(`Published for ${address}: Generation: ${generation}, Consumption: ${consumption}`);
-        updateSmartContract(address, generation, consumption);
-      }
-    });
+    client.publish(topic, payload);
+  }
+  
+  // Update blockchain in batches by group
+  for (const [group, data] of groupedData.entries()) {
+    await updateSmartContractBatch(parseInt(group), data);
   }
 }
 
-async function updateSmartContract(address, generation, consumption) {
-  try {
-    const gasPrice = await web3.eth.getGasPrice();
-    const gasEstimate = await contract.methods.updateEnergyData(address, generation, consumption).estimateGas({ from: account.address });
-    
-    const tx = await contract.methods.updateEnergyData(address, generation, consumption).send({
-      from: account.address,
-      gas: gasEstimate,
-      gasPrice: gasPrice
-    });
-    
-    console.log(`Transaction successful for ${address}. Hash: ${tx.transactionHash}`);
-  } catch (error) {
-    console.error(`Error updating smart contract for ${address}:`, error);
+// New function to calculate generation based on hour
+function calculateGeneration(hour) {
+  if (hour >= 18 || hour < 6) return 0;
+  
+  const efficiencyMap = new Map([
+    [[6, 17], 5],
+    [[7, 16], 12],
+    [[8, 15], 24],
+    [[9, 14], 36],
+    [[10, 13], 48],
+    [[11, 12], 60]
+  ]);
+  
+  for (const [[start, end], efficiency] of efficiencyMap) {
+    if (hour === start || hour === end) {
+      return efficiency * Math.floor(Math.random() * 20 + 1);
+    }
   }
+  return 0;
 }
+
+// New function to calculate consumption based on hour
+function calculateConsumption(hour) {
+  const consumptionMap = new Map([
+    [[0, 6], 30],
+    [[6, 9], 70],
+    [[9, 12], 45],
+    [[12, 15], 75],
+    [[15, 18], 50],
+    [[18, 21], 120],
+    [[21, 24], 90]
+  ]);
+  
+  for (const [[start, end], factor] of consumptionMap) {
+    if (hour >= start && hour < end) {
+      return factor * Math.round(5 * Math.floor(Math.random() * 5.5 + 0.5));
+    }
+  }
+  return 0;
+}
+
+
+// New function to update smart contract in batches
+async function updateSmartContractBatch(group, batchData) {
+    try {
+      // Add data to IPFS
+      const { cid } = await ipfs.add(JSON.stringify(batchData));
+      
+      // Store CID on blockchain
+      const gasEstimate1 = await contract.methods.storeEnergyCID(group, cid.toString())
+        .estimateGas({ from: account.address });
+  
+      const tx1 = await contract.methods.storeEnergyCID(group, cid.toString())
+        .send({
+          from: account.address,
+          gas: gasEstimate1,
+          gasPrice: await web3.eth.getGasPrice()
+        });
+
+        const gasEstimate2 = await contract.methods.updateEnergyDataBatch(group, batchData)
+        .estimateGas({ from: account.address });
+    
+        const tx2 = await contract.methods.updateEnergyDataBatch(group, batchData)
+        .send({
+            from: account.address,
+            gas: gasEstimate2,
+            gasPrice: await web3.eth.getGasPrice()
+        });
+  
+      console.log(`Group ${group} CID: ${cid.toString()}`);
+      console.log(`Batch update successful for group ${group}. Hash: ${tx2.transactionHash}`);
+      console.log(`Processed ${batchData.length} records in this batch`);
+      return cid;
+    } catch (error) {
+      console.error(`IPFS/Bchain error: ${error}`);
+      throw error;
+    }
+  }
 
 async function getRegisteredUsers() {
-  try {
-    const users = await contract.methods.getAllRegisteredUsers().call();
-    const userGroups = {};
-    for (const user of users) {
-      const participant = await contract.methods.participants(user).call();
-      userGroups[user] = participant.group;
+    try {
+      const users = await contract.methods.getAllRegisteredUsers().call();
+      const userGroups = {};
+      for (const user of users) {
+        const participant = await contract.methods.participants(user).call();
+        userGroups[user] = participant.group;
+      }
+      return userGroups;
+    } catch (error) {
+      console.error('Error fetching registered users:', error);
+      return {};
     }
-    return userGroups;
-  } catch (error) {
-    console.error('Error fetching registered users:', error);
-    return {};
   }
-}
-
-// Schedule the simulation to run at the beginning of every hour
+  
+// Modified scheduler
 schedule.scheduleJob('0 * * * *', () => {
   console.log('Running hourly simulation...');
   const newHour = new Date().getHours();
-  simulateAndPublishData(newHour-1);
+  simulateAndPublishDataByGroup(newHour-1);
 });
 
 console.log('IoT simulator started. Waiting for the next hour to begin simulation...');
