@@ -27,7 +27,22 @@
     "mongoose": "^8.9.5",
     "snarkjs": "^0.7.5",
     "socket.io": "^4.8.1",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "@heroicons/react": "^2.0.18",
+    "@openzeppelin/contracts": "^5.2.0",
+    "@rainbow-me/rainbowkit": "^1.0.0",
+    "buffer": "^6.0.3",
+    "chart.js": "^4.4.7",
+    "dotenv": "^16.4.7",
+    "ipfs-http-client": "^60.0.1",
+    "mqtt": "^5.10.3",
+    "next": "^14.0.0",
+    "node-schedule": "^2.1.1",
+    "react": "^19.0.0",
+    "react-chartjs-2": "^5.3.0",
+    "react-dom": "^19.0.0",
+    "wagmi": "^2.14.9",
+    "web3": "^4.16.0"
   },
   "directories": {
     "test": "tests"
