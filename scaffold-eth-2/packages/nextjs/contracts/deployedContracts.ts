@@ -1575,6 +1575,11 @@ const deployedContracts = {
         },
         {
           inputs: [],
+          name: "NoStorage",
+          type: "error",
+        },
+        {
+          inputs: [],
           name: "NoUpdate",
           type: "error",
         },
@@ -1878,6 +1883,105 @@ const deployedContracts = {
           inputs: [
             {
               indexed: true,
+              internalType: "uint256",
+              name: "id",
+              type: "uint256",
+            },
+          ],
+          name: "StoredEnergyOrderCancelled",
+          type: "event",
+        },
+        {
+          anonymous: false,
+          inputs: [
+            {
+              indexed: true,
+              internalType: "uint256",
+              name: "buyOrderId",
+              type: "uint256",
+            },
+            {
+              indexed: true,
+              internalType: "uint256",
+              name: "sellOrderId",
+              type: "uint256",
+            },
+            {
+              indexed: false,
+              internalType: "address",
+              name: "buyer",
+              type: "address",
+            },
+            {
+              indexed: false,
+              internalType: "address",
+              name: "seller",
+              type: "address",
+            },
+            {
+              indexed: false,
+              internalType: "uint256",
+              name: "matchedPrice",
+              type: "uint256",
+            },
+            {
+              indexed: false,
+              internalType: "uint256",
+              name: "matchedQuantity",
+              type: "uint256",
+            },
+          ],
+          name: "StoredEnergyOrderMatched",
+          type: "event",
+        },
+        {
+          anonymous: false,
+          inputs: [
+            {
+              indexed: true,
+              internalType: "uint256",
+              name: "id",
+              type: "uint256",
+            },
+            {
+              indexed: true,
+              internalType: "address",
+              name: "trader",
+              type: "address",
+            },
+            {
+              indexed: false,
+              internalType: "uint256",
+              name: "group",
+              type: "uint256",
+            },
+            {
+              indexed: false,
+              internalType: "uint256",
+              name: "price",
+              type: "uint256",
+            },
+            {
+              indexed: false,
+              internalType: "uint256",
+              name: "quantity",
+              type: "uint256",
+            },
+            {
+              indexed: false,
+              internalType: "enum EnergyTradingL2.OrderType",
+              name: "orderType",
+              type: "uint8",
+            },
+          ],
+          name: "StoredEnergyOrderPlaced",
+          type: "event",
+        },
+        {
+          anonymous: false,
+          inputs: [
+            {
+              indexed: true,
               internalType: "address",
               name: "buyer",
               type: "address",
@@ -2043,6 +2147,19 @@ const deployedContracts = {
           type: "function",
         },
         {
+          inputs: [
+            {
+              internalType: "uint256",
+              name: "orderId",
+              type: "uint256",
+            },
+          ],
+          name: "cancelStoredEnergyOrder",
+          outputs: [],
+          stateMutability: "nonpayable",
+          type: "function",
+        },
+        {
           inputs: [],
           name: "currentHour",
           outputs: [
@@ -2072,21 +2189,21 @@ const deployedContracts = {
           inputs: [
             {
               internalType: "uint256",
-              name: "_group",
+              name: "",
               type: "uint256",
             },
             {
               internalType: "uint256",
-              name: "_hour",
+              name: "",
               type: "uint256",
             },
           ],
-          name: "getEnergyCID",
+          name: "groupBuyOrders",
           outputs: [
             {
-              internalType: "string",
+              internalType: "uint256",
               name: "",
-              type: "string",
+              type: "uint256",
             },
           ],
           stateMutability: "view",
@@ -2111,6 +2228,30 @@ const deployedContracts = {
               internalType: "string",
               name: "",
               type: "string",
+            },
+          ],
+          stateMutability: "view",
+          type: "function",
+        },
+        {
+          inputs: [
+            {
+              internalType: "uint256",
+              name: "",
+              type: "uint256",
+            },
+            {
+              internalType: "uint256",
+              name: "",
+              type: "uint256",
+            },
+          ],
+          name: "groupSellOrders",
+          outputs: [
+            {
+              internalType: "uint256",
+              name: "",
+              type: "uint256",
             },
           ],
           stateMutability: "view",
@@ -2155,6 +2296,19 @@ const deployedContracts = {
         },
         {
           inputs: [],
+          name: "nextOrderId",
+          outputs: [
+            {
+              internalType: "uint256",
+              name: "",
+              type: "uint256",
+            },
+          ],
+          stateMutability: "view",
+          type: "function",
+        },
+        {
+          inputs: [],
           name: "owner",
           outputs: [
             {
@@ -2189,6 +2343,11 @@ const deployedContracts = {
             {
               internalType: "bool",
               name: "isActive",
+              type: "bool",
+            },
+            {
+              internalType: "bool",
+              name: "isStorage",
               type: "bool",
             },
             {
@@ -2235,6 +2394,36 @@ const deployedContracts = {
         {
           inputs: [
             {
+              internalType: "uint256",
+              name: "price",
+              type: "uint256",
+            },
+            {
+              internalType: "uint256",
+              name: "quantity",
+              type: "uint256",
+            },
+            {
+              internalType: "enum EnergyTradingL2.OrderType",
+              name: "orderType",
+              type: "uint8",
+            },
+          ],
+          name: "placeStoredEnergyOrder",
+          outputs: [],
+          stateMutability: "nonpayable",
+          type: "function",
+        },
+        {
+          inputs: [],
+          name: "preRegisterUsers",
+          outputs: [],
+          stateMutability: "nonpayable",
+          type: "function",
+        },
+        {
+          inputs: [
+            {
               internalType: "uint8",
               name: "group",
               type: "uint8",
@@ -2242,6 +2431,11 @@ const deployedContracts = {
             {
               internalType: "bool",
               name: "isProducer",
+              type: "bool",
+            },
+            {
+              internalType: "bool",
+              name: "loob",
               type: "bool",
             },
             {
@@ -2291,29 +2485,6 @@ const deployedContracts = {
         {
           inputs: [
             {
-              internalType: "uint256",
-              name: "group",
-              type: "uint256",
-            },
-            {
-              internalType: "uint256",
-              name: "hour",
-              type: "uint256",
-            },
-            {
-              internalType: "bytes32",
-              name: "root",
-              type: "bytes32",
-            },
-          ],
-          name: "setMerkleRoot",
-          outputs: [],
-          stateMutability: "nonpayable",
-          type: "function",
-        },
-        {
-          inputs: [
-            {
               internalType: "uint256[24]",
               name: "_consumptionPrices",
               type: "uint256[24]",
@@ -2325,41 +2496,6 @@ const deployedContracts = {
             },
           ],
           name: "setUnmatchedPrices",
-          outputs: [],
-          stateMutability: "nonpayable",
-          type: "function",
-        },
-        {
-          inputs: [
-            {
-              components: [
-                {
-                  internalType: "address",
-                  name: "buyer",
-                  type: "address",
-                },
-                {
-                  internalType: "address",
-                  name: "seller",
-                  type: "address",
-                },
-                {
-                  internalType: "uint256",
-                  name: "price",
-                  type: "uint256",
-                },
-                {
-                  internalType: "uint256",
-                  name: "quantity",
-                  type: "uint256",
-                },
-              ],
-              internalType: "struct EnergyTradingL2.BatchStoredTrade[]",
-              name: "trades",
-              type: "tuple[]",
-            },
-          ],
-          name: "settleStoredEnergyTrades",
           outputs: [],
           stateMutability: "nonpayable",
           type: "function",
@@ -2422,6 +2558,55 @@ const deployedContracts = {
           name: "storeEnergyCID",
           outputs: [],
           stateMutability: "nonpayable",
+          type: "function",
+        },
+        {
+          inputs: [
+            {
+              internalType: "uint256",
+              name: "",
+              type: "uint256",
+            },
+          ],
+          name: "storedEnergyOrders",
+          outputs: [
+            {
+              internalType: "uint256",
+              name: "id",
+              type: "uint256",
+            },
+            {
+              internalType: "address",
+              name: "trader",
+              type: "address",
+            },
+            {
+              internalType: "uint256",
+              name: "price",
+              type: "uint256",
+            },
+            {
+              internalType: "uint256",
+              name: "quantity",
+              type: "uint256",
+            },
+            {
+              internalType: "enum EnergyTradingL2.OrderType",
+              name: "orderType",
+              type: "uint8",
+            },
+            {
+              internalType: "bool",
+              name: "isActive",
+              type: "bool",
+            },
+            {
+              internalType: "uint256",
+              name: "group",
+              type: "uint256",
+            },
+          ],
+          stateMutability: "view",
           type: "function",
         },
         {
@@ -2567,50 +2752,6 @@ const deployedContracts = {
           name: "updateParticipantData",
           outputs: [],
           stateMutability: "nonpayable",
-          type: "function",
-        },
-        {
-          inputs: [
-            {
-              internalType: "uint256",
-              name: "group",
-              type: "uint256",
-            },
-            {
-              internalType: "uint256",
-              name: "hour",
-              type: "uint256",
-            },
-            {
-              internalType: "address",
-              name: "user",
-              type: "address",
-            },
-            {
-              internalType: "uint256",
-              name: "generation",
-              type: "uint256",
-            },
-            {
-              internalType: "uint256",
-              name: "consumption",
-              type: "uint256",
-            },
-            {
-              internalType: "bytes32[]",
-              name: "proof",
-              type: "bytes32[]",
-            },
-          ],
-          name: "verifyData",
-          outputs: [
-            {
-              internalType: "bool",
-              name: "",
-              type: "bool",
-            },
-          ],
-          stateMutability: "view",
           type: "function",
         },
         {
