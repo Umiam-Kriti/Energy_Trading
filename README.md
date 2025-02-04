@@ -89,7 +89,7 @@ Ensure you have **Node.js** and **Yarn** installed. Then, run:
 ```bash
 yarn install
 
-
+```
 ### 2️⃣ Compile Smart Contracts
 ```bash
 yarn hardhat chain`
