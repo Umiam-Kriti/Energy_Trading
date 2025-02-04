@@ -9,6 +9,9 @@
     ]
   },
   "scripts": {
+    "dev": "npm run --workspace=@se-2/nextjs dev",
+    "build": "yarn workspace @se-2/nextjs build",
+    "start": "yarn workspace @se-2/nextjs start",
     "account": "yarn hardhat:account",
     "account:import": "yarn workspace @se-2/hardhat account:import",
     "account:generate": "yarn workspace @se-2/hardhat account:generate",
@@ -40,7 +43,6 @@
     "next:serve": "yarn workspace @se-2/nextjs serve",
     "postinstall": "husky",
     "precommit": "lint-staged",
-    "start": "yarn workspace @se-2/nextjs dev",
     "test": "yarn hardhat:test",
     "vercel": "yarn workspace @se-2/nextjs vercel",
     "vercel:yolo": "yarn workspace @se-2/nextjs vercel:yolo",
@@ -49,6 +51,7 @@
   },
   "packageManager": "yarn@3.2.3",
   "devDependencies": {
+    "@types/react": "^19.0.8",
     "hardhat": "^2.22.18",
     "husky": "^9.1.6",
     "lint-staged": "^15.2.10"
@@ -57,6 +60,14 @@
     "node": ">=18.18.0"
   },
   "dependencies": {
-    "@openzeppelin/contracts": "^5.2.0"
+    "@heroicons/react": "^2.0.18",
+    "@openzeppelin/contracts": "^5.2.0",
+    "@rainbow-me/rainbowkit": "^1.0.0",
+    "chart.js": "^4.4.7",
+    "next": "^14.0.0",
+    "react": "^19.0.0",
+    "react-chartjs-2": "^5.3.0",
+    "react-dom": "^19.0.0",
+    "wagmi": "^2.14.9"
   }
 }
