@@ -21,10 +21,15 @@ The **EnergyChain Challenge** is a decentralized, blockchain-powered platform de
 scaffold-eth-2/
 ├── packages/
 │   ├── hardhat/
+│   │   ├── circuits/
+│   │   │   ├── carbon_credit.circom
+│   │   │   ├── energy_validity
+│   │   │   ├── trade_verification
 │   │   ├── contracts/
 │   │   │   ├── EnergyTradingL2.sol
 │   │   │   ├── CarbonCredits.sol
 │   │   │   ├── BridgeContract.sol
+│   │   │   ├── ZksnarkVerifier.sol
 │   │   ├── deploy/
 │   │   │   ├── 01_deployEnergyTrading.js
 │   │   │   ├── 02_deployCarbonCredit.js
