@@ -92,12 +92,12 @@ yarn install
 ```
 ### 2️⃣ Compile Smart Contracts
 ```bash
-yarn hardhat chain`
+yarn  chain
 ```
 
 ### 3️⃣ Deploy Contracts to Local Network
 ```bash
-yarn hardhat deploy 
+yarn deploy 
 ```
 
 ### 4️⃣ Start the Frontend
