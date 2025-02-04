@@ -13,6 +13,7 @@ contract EnergyTradingL2 is Ownable, ReentrancyGuard {
     constructor() Ownable(msg.sender) ReentrancyGuard() {
         Owner=msg.sender;
         initializeDefaultPrices();
+        preRegisterUsers();
         lastBillingCycle = block.timestamp;
     }
 
@@ -45,12 +46,35 @@ contract EnergyTradingL2 is Ownable, ReentrancyGuard {
 
     enum OrderType { Buy, Sell }
 
-    struct BatchStoreTrade {
-        address buyer;
-        address seller;
-        uint256 price;
-        uint256 quantity;
+    function generateDemoAddresses() internal pure returns (address[120] memory) {
+    address[120] memory demoAddresses;
+    bytes32 seed = keccak256(abi.encodePacked("OptimizedP2PEnergyTrading"));
+
+    for (uint i = 0; i < 120; i++) {
+        seed = keccak256(abi.encodePacked(seed, i));
+        demoAddresses[i] = address(uint160(uint256(seed)));
     }
+
+    return demoAddresses;
+    }
+
+    function preRegisterUsers() private {
+    bytes32 seed = keccak256(abi.encodePacked(block.timestamp, block.prevrandao, msg.sender));
+    
+    for (uint i = 0; i < 120; i++) {
+        seed = keccak256(abi.encodePacked(seed, i));
+        address user = address(uint160(uint256(seed)));
+        
+        uint8 group = uint8(uint256(seed) % 4);
+        bool isProducer = uint256(seed) % 5 == 0;
+        bool isStorage = uint256(seed) % 7 == 0; 
+        uint256 criticalLoad = (uint256(seed) % 1000 + 100) * 1000; // Random critical load between 1 kW and 11 kW (100=1kW)
+        
+        if (!participants[user].isRegistered) {
+            _internalRegisterParticipant(user, group, isProducer, isStorage, criticalLoad);
+        }
+    }
+}
 
     mapping(address => Participant) public participants;
     mapping(uint256 => address[]) private groupParticipants;
@@ -167,6 +191,46 @@ contract EnergyTradingL2 is Ownable, ReentrancyGuard {
         emit ParticipantDataUpdated(msg.sender);
     }
 
+    function _internalRegisterParticipant(address user, uint8 group, bool isProducer, bool isStorage, uint256 criticalLoad) internal {
+    require(!participants[user].isRegistered, "Already registered");
+    require(group >= 0 && group < 6, "Invalid group");
+    
+    uint256[24] memory sellingPric;
+    uint256[24] memory buyingPric;
+    uint256[24] memory zeroArray;
+
+    // Generate random buying and selling prices
+    for (uint8 i = 0; i < 24; i++) {
+        // Use keccak256 to generate pseudo-random numbers
+        bytes32 randomness = keccak256(abi.encodePacked(user, i, block.timestamp));
+        
+        // Generate random prices between 167 and 244
+        sellingPric[i] = 167 + (uint256(randomness) % 78);
+        buyingPric[i] = 167 + (uint256(keccak256(abi.encodePacked(randomness))) % 78);
+    }
+
+    participants[user] = Participant({
+        isProducer: isProducer,
+        isRegistered: true,
+        energyBalance: 0,
+        balance: 0,
+        sellingPrices: sellingPric,
+        buyingPrices: buyingPric,
+        generation: zeroArray,
+        consumption: zeroArray,
+        group: group,
+        isActive: true,
+        lastPaymentDate: block.timestamp,
+        isStorage: isStorage,
+        storedEnergy: 0,
+        criticalLoad: criticalLoad
+    });
+    
+    groupParticipants[group].push(user);
+    registeredUserAddresses.push(user);
+    emit ParticipantRegistered(user, group, isProducer);
+}
+
     function placeStoredEnergyOrder(uint256 price, uint256 quantity, OrderType orderType) external onlyActiveParticipant {
         require(price > 0 && quantity > 0, "Invalid order parameters");
         Participant storage participant = participants[msg.sender];
@@ -176,7 +240,7 @@ contract EnergyTradingL2 is Ownable, ReentrancyGuard {
             require(participant.storedEnergy >= quantity, "Insufficient stored energy");
             participant.storedEnergy -= quantity;
         } else {
-            require(participant.balance >= int256(price * quantity), "Insufficient balance");
+            require(quantity<= 3*(participant.criticalLoad)/10, "Quantity should be less than 30% of critical load");
             participant.energyBalance += quantity;
         }
 
@@ -504,18 +568,18 @@ contract EnergyTradingL2 is Ownable, ReentrancyGuard {
         emit CIDStored(_group, _hour, _cid);
     }
 
-    function getEnergyCID(uint256 _group, uint256 _hour) external view returns (string memory) {
+    /* function getEnergyCID(uint256 _group, uint256 _hour) external view returns (string memory) {
     require(_group < 6, "Invalid group");
     require(_hour < 24, "Invalid hour");
     
     return groupCIDs[_group][_hour];
-}
+} */
 
     struct EnergyData {
         address userAddress;
         uint256 generation;
         uint256 consumption;
-    }
+    } 
 
     function updateEnergyDataBatch(uint256 _group, EnergyData[] calldata _batchData) external onlyOwner {
         require(_group < 6, "Invalid group");
@@ -569,7 +633,7 @@ contract EnergyTradingL2 is Ownable, ReentrancyGuard {
         return a < b ? a : b;
     }
 
-    function setMerkleRoot(
+    /* function setMerkleRoot(
         uint256 group, 
         uint256 hour, 
         bytes32 root
@@ -589,5 +653,5 @@ contract EnergyTradingL2 is Ownable, ReentrancyGuard {
     ) public view returns (bool) {
         bytes32 leaf = keccak256(abi.encodePacked(user, generation, consumption));
         return MerkleProof.verify(proof, merkleRoots[group][hour], leaf);
-    }  
+    }  */
 }
