@@ -1,15 +1,15 @@
 const mqtt = require('mqtt');
 const Web3 = require('web3');
 const schedule = require('node-schedule');
-const { create } = require('ipfs-http-client');
-const ipfs = create({
+//const { create } = require('ipfs-http-client');
+/*const ipfs = create({
     host: 'ipfs.infura.io',
     port: 5001,
     protocol: 'https',
     headers: {
       authorization: `Basic ${Buffer.from(`${INFURA_PROJECT_ID}:${INFURA_SECRET}`).toString('base64')}`
     }
-  });
+  });*/
 
 // MQTT broker settings
 const BROKER = 'mqtt://test.mosquitto.org';
@@ -114,7 +114,7 @@ function calculateConsumption(hour) {
 async function updateSmartContractBatch(group, batchData) {
     try {
       // Add data to IPFS
-      const { cid } = await ipfs.add(JSON.stringify(batchData));
+      /*const { cid } = await ipfs.add(JSON.stringify(batchData));
       
       // Store CID on blockchain
       const gasEstimate1 = await contract.methods.storeEnergyCID(group, cid.toString())
@@ -125,7 +125,7 @@ async function updateSmartContractBatch(group, batchData) {
           from: account.address,
           gas: gasEstimate1,
           gasPrice: await web3.eth.getGasPrice()
-        });
+        });*/
 
         const gasEstimate2 = await contract.methods.updateEnergyDataBatch(group, batchData)
         .estimateGas({ from: account.address });
@@ -137,12 +137,12 @@ async function updateSmartContractBatch(group, batchData) {
             gasPrice: await web3.eth.getGasPrice()
         });
   
-      console.log(`Group ${group} CID: ${cid.toString()}`);
+      //console.log(`Group ${group} CID: ${cid.toString()}`);
       console.log(`Batch update successful for group ${group}. Hash: ${tx2.transactionHash}`);
       console.log(`Processed ${batchData.length} records in this batch`);
       return cid;
     } catch (error) {
-      console.error(`IPFS/Bchain error: ${error}`);
+      console.error(`Bchain error: ${error}`);
       throw error;
     }
   }
