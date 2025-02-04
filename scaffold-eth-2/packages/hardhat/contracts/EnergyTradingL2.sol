@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+//import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
 contract EnergyTradingL2 is Ownable, ReentrancyGuard {
     address public Owner;
@@ -68,8 +68,8 @@ contract EnergyTradingL2 is Ownable, ReentrancyGuard {
     mapping(address => Participant) public participants;
     mapping(uint256 => address[]) private groupParticipants;
     mapping(uint256 => address[]) public sortedBuyersForDay;
-    mapping(uint256 => mapping(uint256 => string)) public groupCIDs; // group => hour => CID
-    mapping(uint256 => mapping(uint256 => bytes32)) public merkleRoots; // group => hour => root
+    //mapping(uint256 => mapping(uint256 => string)) public groupCIDs; // group => hour => CID
+    //mapping(uint256 => mapping(uint256 => bytes32)) public merkleRoots; // group => hour => root
     mapping(uint256 => StoredEnergyOrder) public storedEnergyOrders;
     mapping(uint256 => uint256[]) public groupBuyOrders; // group => orderIds
     mapping(uint256 => uint256[]) public groupSellOrders; // group => orderIds
@@ -98,7 +98,7 @@ contract EnergyTradingL2 is Ownable, ReentrancyGuard {
     event GroupGeneration(uint256 indexed group, uint256 indexed hour, uint256 groupgen);
     event GroupConsumption(uint256 indexed group, uint256 indexed hour, uint256 groupcon);
     event CIDStored(uint256 indexed group, uint256 indexed hour, string cid);
-    event StoredEnergyTradeSettled(address indexed buyer, address indexed seller, uint256 quantity, uint256 price);
+    //event StoredEnergyTradeSettled(address indexed buyer, address indexed seller, uint256 quantity, uint256 price);
     event StoredEnergyOrderPlaced(
         uint256 indexed id,
         address indexed trader,
@@ -217,6 +217,12 @@ contract EnergyTradingL2 is Ownable, ReentrancyGuard {
         participant.sellingPrices = _sellingPrices;
         participant.buyingPrices = _buyingPrices;
         emit ParticipantDataUpdated(msg.sender);
+    }
+
+    function setDummyEnergyData(address user, uint256[24] memory generation, uint256[24] memory consumption) external onlyOwner {
+        require(participants[user].isRegistered, "User not registered");
+        participants[user].generation = generation;
+        participants[user].consumption = consumption;
     }
 
     function _internalRegisterParticipant(
@@ -615,14 +621,14 @@ contract EnergyTradingL2 is Ownable, ReentrancyGuard {
         emit BalanceUpdated(prosumer, amount);
     }
 
-    function storeEnergyCID(uint256 _group, uint256 _hour, string calldata _cid) external onlyOwner {
+    /*function storeEnergyCID(uint256 _group, uint256 _hour, string calldata _cid) external onlyOwner {
         require(_group < 6, "Invalid group");
         require(_hour < 24, "Invalid hour");
         require(bytes(_cid).length >= 46, "Invalid CID format");
 
         groupCIDs[_group][_hour] = _cid;
         emit CIDStored(_group, _hour, _cid);
-    }
+    }*/
 
     /* function getEnergyCID(uint256 _group, uint256 _hour) external view returns (string memory) {
     require(_group < 6, "Invalid group");
