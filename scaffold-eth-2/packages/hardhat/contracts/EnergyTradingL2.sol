@@ -46,18 +46,6 @@ contract EnergyTradingL2 is Ownable, ReentrancyGuard {
 
     enum OrderType { Buy, Sell }
 
-    function generateDemoAddresses() internal pure returns (address[120] memory) {
-    address[120] memory demoAddresses;
-    bytes32 seed = keccak256(abi.encodePacked("OptimizedP2PEnergyTrading"));
-
-    for (uint i = 0; i < 120; i++) {
-        seed = keccak256(abi.encodePacked(seed, i));
-        demoAddresses[i] = address(uint160(uint256(seed)));
-    }
-
-    return demoAddresses;
-    }
-
     function preRegisterUsers() private {
     bytes32 seed = keccak256(abi.encodePacked(block.timestamp, block.prevrandao, msg.sender));
     
