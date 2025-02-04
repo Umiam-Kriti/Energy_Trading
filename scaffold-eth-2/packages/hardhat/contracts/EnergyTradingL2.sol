@@ -1,36 +1,51 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;  
+pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
-contract EnergyTradingL2 is ReentrancyGuard, Ownable {
+contract OptimizedP2PEnergyTrading is Ownable, ReentrancyGuard {
+
     address public Owner;
     address[] public registeredUserAddresses;
 
-    constructor() Ownable(msg.sender) {
-    initializeDefaultPrices();
-    lastBillingCycle = block.timestamp;
-}
+    constructor() Ownable(msg.sender) ReentrancyGuard() {
+        Owner=msg.sender;
+        initializeDefaultPrices();
+        lastBillingCycle = block.timestamp;
+    }
 
     struct Participant {
-        bool isProducer; 
+        bool isProducer;
         bool isRegistered;
         bool isActive;
+        bool isStorage;
         uint256 group;
         uint256 energyBalance;
         int256 balance;
         uint256 lastPaymentDate;
+        uint256 storedEnergy;
+        uint256 criticalLoad; // in 0.01 kW
         uint256[24] sellingPrices;
         uint256[24] buyingPrices;
         uint256[24] generation;
         uint256[24] consumption;
-        uint256 storedEnergy;
-        uint256 criticalLoad; // in 0.01 kW
     }
 
-    struct BatchStoredTrade {
+    struct StoredEnergyOrder {
+        uint256 id;
+        address trader;
+        uint256 price;
+        uint256 quantity;
+        OrderType orderType;
+        bool isActive;
+        uint256 group;
+    }
+
+    enum OrderType { Buy, Sell }
+
+    struct BatchStoreTrade {
         address buyer;
         address seller;
         uint256 price;
@@ -42,6 +57,13 @@ contract EnergyTradingL2 is ReentrancyGuard, Ownable {
     mapping(uint256 => address[]) public sortedBuyersForDay;
     mapping(uint256 => mapping(uint256 => string)) public groupCIDs; // group => hour => CID
     mapping(uint256 => mapping(uint256 => bytes32)) public merkleRoots; // group => hour => root
+    mapping(uint256 => StoredEnergyOrder) public storedEnergyOrders;
+    mapping(uint256 => uint256[]) public groupBuyOrders;    // group => orderIds
+    mapping(uint256 => uint256[]) public groupSellOrders;   // group => orderIds
+
+    uint256[] public buyOrders;
+    uint256[] public sellOrders;
+    uint256 public nextOrderId = 1;
 
     uint256 public currentHour;
     uint256[24] public unmatchedConsumptionPrice;
@@ -66,6 +88,9 @@ contract EnergyTradingL2 is ReentrancyGuard, Ownable {
     event GroupConsumption(uint256 indexed group, uint256 indexed hour, uint256 groupcon);
     event CIDStored(uint256 indexed group, uint256 indexed hour, string cid);
     event StoredEnergyTradeSettled(address indexed buyer, address indexed seller, uint256 quantity, uint256 price);
+    event StoredEnergyOrderPlaced(uint256 indexed id, address indexed trader, uint256 group, uint256 price, uint256 quantity, OrderType orderType);
+    event StoredEnergyOrderMatched(uint256 indexed buyOrderId, uint256 indexed sellOrderId, address buyer, address seller, uint256 matchedPrice, uint256 matchedQuantity);
+    event StoredEnergyOrderCancelled(uint256 indexed id);
 
     error NotAuthorized();
     error ParticipantNotActive();
@@ -77,6 +102,7 @@ contract EnergyTradingL2 is ReentrancyGuard, Ownable {
     error InvalidPrice();
     error InsufficientPayment();
     error NoProsumerBalance();
+    error NoStorage();
 
     modifier onlyActiveParticipant() {
         if (!participants[msg.sender].isActive) revert ParticipantNotActive();
@@ -105,9 +131,9 @@ contract EnergyTradingL2 is ReentrancyGuard, Ownable {
         300,300,289,276];
     }
 
-    function registerParticipant(uint8 group, bool isProducer, uint256 pcLoad) external {
+    function registerParticipant(uint8 group, bool isProducer, bool loob, uint256 pcLoad) external {
     require(!participants[msg.sender].isRegistered, "Already registered");
-    require(group < 6, "Invalid group");
+    require(group >= 0 && group < 6, "Invalid group");
     
     uint256[24] memory zeroArray;
     participants[msg.sender] = Participant({
@@ -122,6 +148,7 @@ contract EnergyTradingL2 is ReentrancyGuard, Ownable {
         group: group,
         isActive: true,
         lastPaymentDate: block.timestamp,
+        isStorage: loob,
         storedEnergy: 0,
         criticalLoad: pcLoad
     });
@@ -142,31 +169,144 @@ contract EnergyTradingL2 is ReentrancyGuard, Ownable {
         emit ParticipantDataUpdated(msg.sender);
     }
 
-    function settleStoredEnergyTrades(BatchStoredTrade[] calldata trades) external onlyOwner {
-        for (uint256 i = 0; i < trades.length; i++) {
-            BatchStoredTrade memory trade = trades[i];
+    function placeStoredEnergyOrder(uint256 price, uint256 quantity, OrderType orderType) external onlyActiveParticipant {
+        require(price > 0 && quantity > 0, "Invalid order parameters");
+        Participant storage participant = participants[msg.sender];
+        uint256 group = participant.group;
+
+        if (orderType == OrderType.Sell) {
+            require(participant.storedEnergy >= quantity, "Insufficient stored energy");
+            participant.storedEnergy -= quantity;
+        } else {
+            participant.energyBalance += quantity;
+        }
+
+        uint256 orderId = nextOrderId++;
+        storedEnergyOrders[orderId] = StoredEnergyOrder({
+            id: orderId,
+            trader: msg.sender,
+            price: price,
+            quantity: quantity,
+            orderType: orderType,
+            isActive: true,
+            group: group
+        });
+
+        if (orderType == OrderType.Buy) {
+            matchStoredEnergyBuyOrder(orderId);
+            if (storedEnergyOrders[orderId].isActive) {
+                buyOrders.push(orderId);
+                groupBuyOrders[group].push(orderId);
+            }
+        } else {
+            matchStoredEnergySellOrder(orderId);
+            if (storedEnergyOrders[orderId].isActive) {
+                sellOrders.push(orderId);
+                groupSellOrders[group].push(orderId);
+            }
+        }
+
+        emit StoredEnergyOrderPlaced(orderId, msg.sender, group, price, quantity, orderType);
+    }
+
+    function matchStoredEnergyBuyOrder(uint256 buyOrderId) internal {
+        StoredEnergyOrder storage buyOrder = storedEnergyOrders[buyOrderId];
+        uint256 group = buyOrder.group;
+        
+        uint256[] storage groupSells = groupSellOrders[group];
+        for (uint256 i = 0; i < groupSells.length && buyOrder.isActive; i++) {
+            StoredEnergyOrder storage sellOrder = storedEnergyOrders[groupSells[i]];
             
-            require(participants[trade.seller].storedEnergy >= trade.quantity, 
-                "Insufficient stored energy");
-            require(participants[trade.buyer].isActive && participants[trade.seller].isActive, 
-                "Inactive participant");
-            require(trade.quantity <=  (3 * participants[trade.buyer].criticalLoad /10), 
-                "Inactive participant");
-
-            participants[trade.seller].storedEnergy -= trade.quantity;
-            participants[trade.buyer].energyBalance += trade.quantity;
-
-            uint256 totalPrice = trade.price * trade.quantity;
-            uint256 commission = totalPrice * SERVICE_RATE; // Apply service fee
-            uint256 sellerRevenue = totalPrice - commission;
-
-            updateBalance(trade.buyer, -int256(totalPrice));
-            updateBalance(trade.seller, int256(sellerRevenue));
-
-            emit StoredEnergyTradeSettled(trade.buyer, trade.seller, trade.quantity, trade.price);
+            if(!sellOrder.isActive || buyOrder.price != sellOrder.price) continue;
+            
+            uint256 matchedQuantity = min(buyOrder.quantity, sellOrder.quantity);
+            uint256 matchedPrice = sellOrder.price;
+            
+            processStoredEnergyMatch(buyOrder, sellOrder, matchedQuantity, matchedPrice);
+            
+            if (sellOrder.quantity == 0) {
+                sellOrder.isActive = false;
+                removeOrder(groupSellOrders[group], i);
+                removeOrder(sellOrders, findOrderIndex(sellOrders, sellOrder.id));
+                i--;
+            }
         }
     }
 
+    function matchStoredEnergySellOrder(uint256 sellOrderId) internal {
+        StoredEnergyOrder storage sellOrder = storedEnergyOrders[sellOrderId];
+        uint256 group = sellOrder.group;
+        
+        uint256[] storage groupBuys = groupBuyOrders[group];
+        for (uint256 i = 0; i < groupBuys.length && sellOrder.isActive; i++) {
+            StoredEnergyOrder storage buyOrder = storedEnergyOrders[groupBuys[i]];
+            
+            if (!buyOrder.isActive || buyOrder.price != sellOrder.price) continue;
+            
+            uint256 matchedQuantity = min(buyOrder.quantity, sellOrder.quantity);
+            uint256 matchedPrice = sellOrder.price;
+            
+            processStoredEnergyMatch(buyOrder, sellOrder, matchedQuantity, matchedPrice);
+            
+            if (buyOrder.quantity == 0) {
+                buyOrder.isActive = false;
+                removeOrder(groupBuyOrders[group], i);
+                removeOrder(buyOrders, findOrderIndex(buyOrders, buyOrder.id));
+                i--;
+            }
+        }
+    }
+
+    function processStoredEnergyMatch(
+        StoredEnergyOrder storage buyOrder,
+        StoredEnergyOrder storage sellOrder,
+        uint256 matchedQuantity,
+        uint256 matchedPrice
+    ) internal {
+        uint256 totalPrice = matchedQuantity * matchedPrice;
+        uint256 commission = totalPrice * SERVICE_RATE ;
+        uint256 sellerRevenue = totalPrice - commission;
+        
+        participants[buyOrder.trader].storedEnergy += matchedQuantity;
+        updateBalance(buyOrder.trader, -int256(totalPrice));
+        updateBalance(sellOrder.trader, int256(sellerRevenue));
+        
+        buyOrder.quantity -= matchedQuantity;
+        sellOrder.quantity -= matchedQuantity;
+        
+        emit StoredEnergyOrderMatched(
+            buyOrder.id,
+            sellOrder.id,
+            buyOrder.trader,
+            sellOrder.trader,
+            matchedPrice,
+            matchedQuantity
+        );
+    }
+
+    function cancelStoredEnergyOrder(uint256 orderId) external {
+        StoredEnergyOrder storage order = storedEnergyOrders[orderId];
+        require(order.trader == msg.sender, "Not order owner");
+        require(order.isActive, "Order not active");
+
+        order.isActive = false;
+        uint256 group = order.group;
+
+        if (order.orderType == OrderType.Buy) {
+            removeOrder(buyOrders, findOrderIndex(buyOrders, orderId));
+            removeOrder(groupBuyOrders[group], findOrderIndex(groupBuyOrders[group], orderId));
+            participants[msg.sender].energyBalance -= order.quantity;
+        } else {
+            removeOrder(sellOrders, findOrderIndex(sellOrders, orderId));
+            removeOrder(groupSellOrders[group], findOrderIndex(groupSellOrders[group], orderId));
+            participants[msg.sender].storedEnergy += order.quantity;
+        }
+
+        emit StoredEnergyOrderCancelled(orderId);
+    }
+    
+
+    // function to store energy from generation
     function storeEnergy(uint256 amount) external onlyActiveParticipant {
         require(participants[msg.sender].generation[currentHour] >= amount, 
             "Insufficient generation");
@@ -174,6 +314,7 @@ contract EnergyTradingL2 is ReentrancyGuard, Ownable {
         participants[msg.sender].generation[currentHour] -= amount;
         participants[msg.sender].storedEnergy += amount;
     }
+
 
     function updateHour(uint256 newHour) external onlyOwner {
         if (newHour >= 24) revert InvalidHour();
@@ -219,7 +360,7 @@ contract EnergyTradingL2 is ReentrancyGuard, Ownable {
             if (!seller.isActive) continue;
             
             uint256 excess = seller.generation[hour] > seller.consumption[hour] ?
-                seller.generation[hour] - seller.consumption[hour] : 0;
+                seller.generation[hour] - (seller.consumption[hour]) : 0;
             
             if (excess == 0) continue;
             
@@ -249,29 +390,29 @@ contract EnergyTradingL2 is ReentrancyGuard, Ownable {
             return excess;
         }
     
-        uint256 needed = buyer.consumption[hour] > buyer.energyBalance ? buyer.consumption[hour] - buyer.energyBalance : 0;
-        buyer.energyBalance = buyer.energyBalance > buyer.consumption[hour] ? buyer.energyBalance - buyer.consumption[hour] : 0;
+        uint256 needed = buyer.consumption[hour] > buyer.energyBalance ? buyer.consumption[hour] - (buyer.energyBalance): 0;
+        buyer.energyBalance=buyer.energyBalance > buyer.consumption[hour] ? buyer.energyBalance - (buyer.consumption[hour]): 0;
         uint256 matched = needed > excess ? excess : needed;
     
         if (matched == 0) return excess;
     
-        buyer.consumption[hour] -= matched;
-        seller.generation[hour] -= matched;
+        buyer.consumption[hour] = buyer.consumption[hour] - (matched);
+        seller.generation[hour] = seller.generation[hour] - (matched);
 
-        if (sellerAddr != buyerAddr) {
-            uint256 totalPrice = matched * sellingPrice;
-            uint256 commission = matched * SERVICE_RATE;
-            uint256 sellerRevenue = totalPrice - commission;
+        if (sellerAddr != buyerAddr) {  // Only process payment if not self-matching
+            uint256 totalPrice = matched * (sellingPrice);
+            uint256 commission = matched * (SERVICE_RATE);
+            uint256 sellerRevenue = totalPrice - (commission);
         
             updateBalance(buyerAddr, -int256(totalPrice));
             updateBalance(sellerAddr, int256(sellerRevenue));
         
             emit TradeExecuted(sellerAddr, buyerAddr, hour, matched, sellingPrice);
-        } else {
+        }else{
             emit TradeExecuted(sellerAddr, buyerAddr, hour, matched, 0);
         }
 
-        return excess - matched;
+        return excess - (matched);
     }
 
     function chargeUnmatched(uint256 hour, uint256 group) internal {
@@ -283,12 +424,12 @@ contract EnergyTradingL2 is ReentrancyGuard, Ownable {
                 if (!p.isActive) continue;
 
                 if (p.consumption[hour] > 0) {
-                    uint256 unmatchedCost = p.consumption[hour] * unmatchedConsumptionPrice[hour];
+                    uint256 unmatchedCost = p.consumption[hour] * (unmatchedConsumptionPrice[hour]);
                     updateBalance(participantAddr, -int256(unmatchedCost));
                     emit UnmatchedConsumption(participantAddr, hour, p.consumption[hour], unmatchedConsumptionPrice[hour]);
                 } 
                 if (p.isProducer && p.generation[hour] > 0) {
-                    uint256 reward = p.generation[hour] * unmatchedGenerationReward[hour];
+                    uint256 reward = p.generation[hour] * (unmatchedGenerationReward[hour]);
                     updateBalance(participantAddr, int256(reward));
                     emit UnmatchedGeneration(participantAddr, hour, p.generation[hour], unmatchedGenerationReward[hour]);
                 }
@@ -353,7 +494,7 @@ contract EnergyTradingL2 is ReentrancyGuard, Ownable {
         
         int256 amount = -participant.balance;
         participant.balance = 0;
-        payable(prosumer).transfer(uint256(amount)*GIGA);
+        payable(prosumer).transfer(uint256(amount) * (GIGA));
         emit BalanceUpdated(prosumer, amount);
     }
 
@@ -401,8 +542,8 @@ contract EnergyTradingL2 is ReentrancyGuard, Ownable {
             participants[userAddress].generation[hour] = _batchData[i].generation;
             participants[userAddress].consumption[hour] = _batchData[i].consumption;
 
-            gg += _batchData[i].generation;
-            gc += _batchData[i].consumption;
+            gg+=_batchData[i].generation;
+            gc+=_batchData[i].consumption;
         }
         
         if (currentHour == 0) {
@@ -416,7 +557,24 @@ contract EnergyTradingL2 is ReentrancyGuard, Ownable {
         emit BatchEnergyDataUpdated(_group, hour, _batchData.length);
         emit GroupGeneration(_group, hour, gg);
         emit GroupConsumption(_group, hour, gc);
-    } 
+    }
+
+    function findOrderIndex(uint256[] storage orderList, uint256 orderId) internal view returns (uint256) {
+        for (uint256 i = 0; i < orderList.length; i++) {
+            if (orderList[i] == orderId) return i;
+        }
+        revert("Order not found");
+    }
+
+    function removeOrder(uint256[] storage orderList, uint256 index) internal {
+        require(index < orderList.length, "Invalid index");
+        orderList[index] = orderList[orderList.length - 1];
+        orderList.pop();
+    }
+
+    function min(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a < b ? a : b;
+    }
 
     function setMerkleRoot(
         uint256 group, 
