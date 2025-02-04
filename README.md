@@ -15,6 +15,52 @@ The **EnergyChain Challenge** is a decentralized, blockchain-powered platform de
 
 ## 🛠 System Architecture
 
+## 📂 Folder Structure
+
+```plaintext
+scaffold-eth-2/
+├── packages/
+│   ├── hardhat/
+│   │   ├── contracts/
+│   │   │   ├── EnergyTradingL2.sol
+│   │   │   ├── CarbonCredits.sol
+│   │   │   ├── BridgeContract.sol
+│   │   ├── deploy/
+│   │   │   ├── 01_deployEnergyTrading.js
+│   │   │   ├── 02_deployCarbonCredit.js
+│   │   │   ├── 03_deployBridge.js
+│   │   ├── test/
+│   │   ├── README.md
+│   ├── nextjs/
+│   │   ├── app/ # Next.js App Router
+│   │   │   ├── page.tsx # Homepage
+│   │   │   ├── trading/page.tsx # Trading Page
+│   │   │   ├── api/energy-trading.ts
+│   │   ├── components/
+│   │   │   ├── EnergyTrading.tsx
+│   │   │   ├── CarbonCreditTrading.tsx
+│   │   │   ├── AnalyticsDashboard.tsx
+│   │   ├── hooks/useEnergyTrading.ts
+│   │   ├── public/
+│   ├── backend/
+│   │   ├── iot/ # IoT Data Integration
+│   │   ├── server.js
+│   ├── final/
+│   ├── README.md
+│   ├── package.json
+│   ├── yarn.lock
+# README
+
+## 🔧 Smart Contracts
+
+| Contract                | Purpose                                                    |
+|-------------------------|------------------------------------------------------------|
+| `EnergyTradingL2.sol`   | Handles P2P energy trading, order matching, settlements. to reduce the gas fee this is deployed on L2 and in batches updated to the main chain using the bridging contract    |
+| `CarbonCredits.sol`     | Automates carbon credit trading and prevents fraud.         |
+| `BridgeContract.sol`    | Facilitates L2 energy trading and ensures security.         |
+
+---
+
 ### 🔗 Blockchain Layer
 - **Smart Contracts:** Handle energy trading, settlements, and carbon credit issuance.
 - **Consensus Mechanism:** Ensures secure and immutable transactions.
@@ -60,20 +106,25 @@ yarn start
 ```
 This will start the **Next.js** frontend at `http://localhost:3000`.
 
-### 5️⃣ Run IoT Backend Server
-```bash
-node packages/backend/server.js
-```
-This will connect to **IoT devices and smart meters** for real-time data collection.
 
----
+
 
 ## 🛡 Privacy & Security
 - **End-to-End Security:** Transactions are secured using blockchain.
 - **Fraud Prevention:** Real-time monitoring of energy trading activities.
 - **Privacy-Preserving Transactions:** ZK-SNARKs enable anonymous yet verifiable transactions.
-
 ---
 
 ## 📜 License
 This project is licensed under the **MIT License**.
+
+## 🔮 Future Enhancements
+- **AI-Powered Demand Forecasting:** Implement machine learning models to predict energy demand and optimize trading.
+- **Cross-Chain Interoperability:** Enable energy trading across multiple blockchain networks.
+- **DeFi Integration:** Introduce decentralized finance mechanisms like staking and yield farming for energy tokens.
+- **Dynamic Pricing Mechanism:** Develop an adaptive pricing algorithm based on real-time supply and demand.
+- **Enhanced Scalability:** Implement rollups or sidechains to support large-scale transactions efficiently.
+- **Advanced Privacy Solutions:** Explore zk-rollups and homomorphic encryption for even better data security.
+- **Regulatory Compliance Features:** Integrate mechanisms for automated regulatory compliance and reporting.
+
+
